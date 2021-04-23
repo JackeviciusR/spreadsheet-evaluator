@@ -34,67 +34,79 @@ class SpreadsheetEvaluator {
             foreach($jobObj->data as $row => $arr) {
                 foreach($arr as $col => $arrObj) {
         
+
                     if ( isset($arrObj->formula) ) {
         
-                        if ( isset($jobObj->data[$row][$col]->formula->reference) ) {
-                            [$row_new, $col_new] = $this->reference($jobObj->data, $jobObj->data[$row][$col]->formula->reference);
+                        $cell = $jobObj->data[$row][$col];
+
+                        if ( isset($cell->formula->reference) ) {
+                            [$row_new, $col_new] = $this->reference($jobObj->data, $cell->formula->reference);
                             $spreadsheet->jobs[$jobInd]->data[$row][$col] = $jobObj->data[$row_new][$col_new];
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->sum) ) {
+                        if ( isset($cell->formula->sum) ) {
                             $this->sum($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data);
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->multiply) ) {
+                        if ( isset($cell->formula->multiply) ) {
                             $this->multiply($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data);
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->divide) ) {
+                        if ( isset($cell->formula->divide) ) {
                             $this->divide($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data);
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->concat) ) {
+                        if ( isset($cell->formula->concat) ) {
                             $this->concat($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data);
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->is_greater) ) {
-                            $is_graeter = $this->comparison($jobObj->data, $row, $col, 'is_greater', $jobObj->data[$row][$col]->formula->is_greater);
-        
-                            if ($is_graeter != 2) {
-                                $answer = [ 'value' => ['boolean' => $is_graeter == 0 ? false : true ]];
+                        $saveComparisonValues = function($result, $row, $col, &$spreadsheet) {
+                            
+                            if ($result != 2) { // jei neklaida
+                                $answer = [ 'value' => ['boolean' => $result == 0 ? false : true ]];
                             } else {
                                 $answer = [ 'error' => 'type does not match, must be number types' ];
                             }
-                            $spreadsheet->jobs[$jobInd]->data[$row][$col] = $answer;
+                            $spreadsheet[$row][$col] = $answer;
+                            
+                        };
+
+                        if ( isset($cell->formula->is_greater) ) {
+                            $result = $this->comparison($jobObj->data, $row, $col, 'is_greater', $cell->formula->is_greater);
+        
+                            $saveComparisonValues($result, $row, $col, $spreadsheet->jobs[$jobInd]->data);
+                            
+                        }
+
+                        if ( isset($cell->formula->is_less) ) {
+                            $result = $this->comparison($jobObj->data, $row, $col, 'is_less', $cell->formula->is_less);
+        
+                            $saveComparisonValues($result, $row, $col, $spreadsheet->jobs[$jobInd]->data);
                             
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->is_equal) ) {
-                            $is = $this->comparison($jobObj->data, $row, $col, 'is_equal', $jobObj->data[$row][$col]->formula->is_equal);
+                        if ( isset($cell->formula->is_equal) ) {
+                            $result = $this->comparison($jobObj->data, $row, $col, 'is_equal', $cell->formula->is_equal);
                             
-                            if ($is != 2) {
-                                $answer = [ 'value' => ['boolean' => $is == 0 ? false : true ]];
-                                
-                            } else {
-                                $answer = [ 'error' => 'type does not match, must be number types' ];
-                            }
-                            $spreadsheet->jobs[$jobInd]->data[$row][$col] = $answer;
+                            $saveComparisonValues($result, $row, $col, $spreadsheet->jobs[$jobInd]->data);
+
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->{'not'}) ) {
+                        if ( isset($cell->formula->{'not'}) ) {
                             $this->logical($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data, 'not');
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->{'and'}) ) {
+                        if ( isset($cell->formula->{'and'}) ) {
                             $this->logical($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data, 'and');
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->{'or'}) ) {
+                        if ( isset($cell->formula->{'or'}) ) {
                             $this->logical($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data, 'or');
                         }
         
-                        if ( isset($jobObj->data[$row][$col]->formula->if) ) {
-                            $this->ifCond($jobObj->data, $row, $col, $spreadsheet->jobs[$jobInd]->data);
+                        if ( isset($cell->formula->if) ) {
+
+                            $this->ifCond($jobObj->data, $row, $col, key($cell->formula->if[0]), $spreadsheet->jobs[$jobInd]->data);
                         }
         
         
@@ -131,57 +143,36 @@ class SpreadsheetEvaluator {
 
     public function findElementValue(array $jobData, Object $operatorArrObj, string $type) {
     
-        if ($type == 'number') {
-            
-            // $operatorArrObj == $jobData[$row][$col]->formula->sum[][]
-            if ( isset($operatorArrObj->reference) && is_string($operatorArrObj->reference) ) {
-                [$row_new, $col_new] = $this->reference($jobData, $operatorArrObj->reference);
-                if ( isset($jobData[$row_new][$col_new]->value->number) && is_numeric($jobData[$row_new][$col_new]->value->number) ) {
-                    return [$jobData[$row_new][$col_new]->value->number]; 
-                } else {
-                    return false;
-                }
-            } elseif (isset($operatorArrObj->value->number) && is_numeric($operatorArrObj->value->number) ) {
-                return [$operatorArrObj->value->number];
+        
+        $istype = function($x) use ($type) {
+
+            if ($type == 'number') {
+                return is_numeric($x);
+            }
+            if ($type == 'boolean') {
+                return is_bool($x);
+            }
+            if ($type == 'text') {
+                return is_string($x);
+            }
+
+        };
+
+
+        if ( isset($operatorArrObj->reference) && is_string($operatorArrObj->reference) ) {
+            [$row_new, $col_new] = $this->reference($jobData, $operatorArrObj->reference);
+            if ( isset($jobData[$row_new][$col_new]->value->{$type}) && $istype($jobData[$row_new][$col_new]->value->{$type}, $type) ) {
+                return [$jobData[$row_new][$col_new]->value->{$type}]; 
             } else {
                 return false;
             }
-    
+        } elseif (isset($operatorArrObj->value->{$type}) && $istype($operatorArrObj->value->{$type}) ) {
+            return [$operatorArrObj->value->{$type}];
+        } else {
+            return false;
         }
     
-        if ($type == 'boolean') {
-            
-            if ( isset($operatorArrObj->reference) && is_string($operatorArrObj->reference) ) {
-                [$row_new, $col_new] = $this->reference($jobData, $operatorArrObj->reference);
-                if ( isset($jobData[$row_new][$col_new]->value->boolean) && is_bool($jobData[$row_new][$col_new]->value->boolean) ) {
-                    return [$jobData[$row_new][$col_new]->value->boolean]; 
-                } else {
-                    return false;
-                }
-            } elseif (isset($operatorArrObj->value->boolean) && is_bool($operatorArrObj->value->boolean) ) {
-                return [$operatorArrObj->value->boolean];
-            } else {
-                return false;
-            }
-    
-        }
-    
-        if ($type == 'text') {
-            
-            if ( isset($operatorArrObj->reference) && is_string($operatorArrObj->reference) ) {
-                [$row_new, $col_new] = $this->reference($jobData, $operatorArrObj->reference);
-                if ( isset($jobData[$row_new][$col_new]->value->text) && is_string($jobData[$row_new][$col_new]->value->text) ) {
-                    return [$jobData[$row_new][$col_new]->value->text]; 
-                } else {
-                    return false;
-                }
-            } elseif (isset($operatorArrObj->value->text) && is_string($operatorArrObj->value->text) ) {
-                return [$operatorArrObj->value->text];
-            } else {
-                return false;
-            }
-    
-        }
+        
         
     }
 
@@ -270,23 +261,40 @@ class SpreadsheetEvaluator {
         $error = false;
         $values=[];
         
-        foreach($operatorArr as $operatorArrObj) {
-    
-            $answer = $this->findElementValue($jobData, $operatorArrObj, 'number');
+
+        $isValues = function($jobData, $operatorArr, $type) {
             
-            if ($answer === false) {
-                $error = true;
-                break;
+            $values=[];
+
+            foreach($operatorArr as $operatorArrObj) {
+    
+                $answer = $this->findElementValue($jobData, $operatorArrObj, $type);
+                
+                if ($answer === false) {
+                    return null;
+                }
+        
+                $values[] = $answer[0];
+
             }
-    
-            $values[] = $answer[0];
-    
+            return $values;
+        };
+
+        $values = $isValues($jobData, $operatorArr, 'number');
+
+        if (!isset($values)) {
+            $values = $isValues($jobData, $operatorArr, 'text'); 
         }
+        
     
-        if (!$error) {
+        if (isset($values)) {
     
             if ($operator == 'is_greater') {
                 return $values[0] > $values[1] ? 1 : 0;
+    
+            }
+            if ($operator == 'is_less') {
+                return $values[0] < $values[1] ? 1 : 0;
     
             }
             if ($operator == 'is_equal') {
@@ -356,19 +364,19 @@ class SpreadsheetEvaluator {
     }
     
        
-    public function ifCond(array $jobData, int $row, int $col, array &$spreadsheetData) : void {
+    public function ifCond(array $jobData, int $row, int $col, $operator, array &$spreadsheetData) : void {
     
         $error = false;
         $value;
-        $is_greater;
+        $result;
         
     
-        if (isset($jobData[$row][$col]->formula->if[0]->is_greater)) {
-            $is_greater = $this->comparison($jobData, $row, $col, 'is_greater', $jobData[$row][$col]->formula->if[0]->is_greater);
+        if (isset($jobData[$row][$col]->formula->if[0]->{$operator})) {
+            $result = $this->comparison($jobData, $row, $col, $operator, $jobData[$row][$col]->formula->if[0]->{$operator});
         }
     
-        if ($is_greater != 2) {
-            $ifArrIndex = $is_greater == 1 ? 1 : 2;
+        if ($result != 2) {
+            $ifArrIndex = $result == 1 ? 1 : 2;
             
             if ( isset($jobData[$row][$col]->formula->if[$ifArrIndex]->reference) && is_string($jobData[$row][$col]->formula->if[$ifArrIndex]->reference) ) {
                 [$row_new, $col_new] = $this->reference($jobData, $jobData[$row][$col]->formula->if[$ifArrIndex]->reference);
